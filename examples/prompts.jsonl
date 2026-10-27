@@ -1,0 +1,2 @@
+{"id": "extracao", "system": "Responda somente com JSON.", "prompt": "Extraia nome e cidade: 'Maria mora em Curitiba.'"}
+{"id": "resumo", "prompt": "Resuma em duas frases o que é uma CPU híbrida."}
