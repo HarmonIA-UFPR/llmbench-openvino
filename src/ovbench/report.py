@@ -43,6 +43,8 @@ def markdown(rel: dict) -> str:
          f"- CPU: {cpu['model']} ({cpu['logical']} lógicas / {cpu['physical']} físicas"
          + (f"; híbrida: {cpu['p_physical']}P/{cpu['p_logical']} thr + {cpu['e_cores']}E" if cpu["hybrid"] else "")
          + f") | RAM: {cpu.get('ram_gb')} GB | ISA: {', '.join(cpu['isa']) or '-'}",
+         *([f"- Topologia da CPU: {cpu['source']}" + (" (ambiente virtualizado)" if cpu.get("virtualized") else "")]),
+         *([f"- **Aviso:** {a}" for a in cpu.get("avisos", [])]),
          f"- SO: {env['os']} | Python {env['python']} | Pacotes: {env.get('pacotes', {})}",
          f"- Parâmetros: {meta['parametros']}", ""]
     linhas = [linha_resumo(r) for r in rel["resultados"]]

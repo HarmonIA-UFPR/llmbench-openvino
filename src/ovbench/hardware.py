@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import struct
 import sys
 from dataclasses import asdict, dataclass, field
@@ -21,6 +22,9 @@ class CpuTopology:
     e_cores: int = 0      # E-cores (cada um com 1 thread)
     isa: list[str] = field(default_factory=list)
     ram_gb: float | None = None
+    virtualized: bool = False     # WSL/VM: a topologia real costuma ficar escondida
+    source: str = "detectado"      # "detectado" ou "informado" (--cpu-topology)
+    avisos: list[str] = field(default_factory=list)
 
     @property
     def is_intel(self) -> bool:
@@ -184,7 +188,39 @@ def detect_isa() -> list[str]:
     return isa
 
 
-def detect_topology() -> CpuTopology:
+_PADRAO_TOPOLOGIA = re.compile(r"^\s*(\d+)\s*P(?:\s*\+\s*(\d+)\s*E)?\s*(?:,\s*(ht|noht))?\s*$", re.I)
+
+
+def parse_topology_override(spec: str) -> dict:
+    """'8P+4E' (P-cores com HT), '8P+4E,noht', '6P' (sem E-cores). Devolve contagens."""
+    m = _PADRAO_TOPOLOGIA.match(spec or "")
+    if not m:
+        raise SystemExit(f"--cpu-topology inválido: {spec!r}. Exemplos: 8P+4E | 8P+4E,noht | 6P")
+    p, e = int(m.group(1)), int(m.group(2) or 0)
+    ht = (m.group(3) or "ht").lower() == "ht"
+    p_logical = p * (2 if ht else 1)
+    return {"p_physical": p, "p_logical": p_logical, "e_cores": e,
+            "logical": p_logical + e, "physical": p + e, "hybrid": e > 0}
+
+
+def _virtualizado() -> bool:
+    if sys.platform.startswith("linux"):
+        try:
+            if "microsoft" in Path("/proc/version").read_text().lower():
+                return True  # WSL
+            for linha in Path("/proc/cpuinfo").read_text().splitlines():
+                if linha.startswith("flags"):
+                    return "hypervisor" in linha.split()
+        except OSError:
+            pass
+    return False
+
+
+_MODELO_COSTUMA_SER_HIBRIDO = re.compile(r"(\b(1[2-9]|[2-9]\d)th Gen\b|Core\(TM\) Ultra)", re.I)
+
+
+def detect_topology(override: str | None = None) -> CpuTopology:
+    """`override` (ou a variável OVBENCH_CPU_TOPOLOGY) sobrepõe a contagem de núcleos detectada."""
     modelo, vendor = _modelo_vendor()
     logical = os.cpu_count() or 1
     physical = logical
@@ -197,17 +233,34 @@ def detect_topology() -> CpuTopology:
         pass
     hib = _hibrida_windows() if sys.platform == "win32" else _hibrida_linux()
     t = CpuTopology(model=modelo, vendor=vendor, logical=logical, physical=physical,
-                    isa=detect_isa(), ram_gb=ram)
+                    isa=detect_isa(), ram_gb=ram, virtualized=_virtualizado())
     if hib:
         t.hybrid, t.p_logical, t.p_physical, t.e_cores = True, hib[0], hib[1], hib[2]
     else:
         t.p_logical, t.p_physical = logical, physical
+
+    override = override or os.environ.get("OVBENCH_CPU_TOPOLOGY")
+    if override:
+        for k, v in parse_topology_override(override).items():
+            setattr(t, k, v)
+        t.source = "informado"
+        if t.logical != (os.cpu_count() or t.logical):
+            t.avisos.append(
+                f"A topologia informada ({override}) soma {t.logical} threads, mas o sistema vê "
+                f"{os.cpu_count()}. Confira se o valor está certo.")
+    elif not t.hybrid and _MODELO_COSTUMA_SER_HIBRIDO.search(modelo):
+        onde = " (WSL/máquina virtual esconde a topologia real)" if t.virtualized else ""
+        t.avisos.append(
+            f"O modelo '{modelo}' costuma ser uma CPU híbrida (P+E-cores), mas a topologia não foi "
+            f"detectada{onde}; por isso os presets de P-core/E-core não foram gerados e as contagens de "
+            "núcleos podem estar erradas. Informe a topologia com --cpu-topology (ex.: 8P+4E) ou rode no "
+            "Windows/Linux nativo. Alguns modelos dessa geração (ex.: i3) não são híbridos.")
     return t
 
 
-def detect_environment() -> dict:
+def detect_environment(override: str | None = None) -> dict:
     """Ficha completa do ambiente, gravada em todo relatório."""
-    env: dict = {"cpu": detect_topology().to_dict(), "os": platform.platform(),
+    env: dict = {"cpu": detect_topology(override).to_dict(), "os": platform.platform(),
                  "python": platform.python_version()}
     for pacote in ("openvino", "optimum", "optimum.intel", "transformers", "torch"):
         try:

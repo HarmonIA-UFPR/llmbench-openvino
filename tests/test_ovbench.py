@@ -4,7 +4,8 @@ import pytest
 
 from ovbench.backends import make_spec
 from ovbench.cli import main
-from ovbench.hardware import CpuTopology, _filtrar_isa, _ler_faixa, detect_isa, detect_topology
+from ovbench.hardware import (CpuTopology, _filtrar_isa, _ler_faixa, detect_isa, detect_topology,
+                              parse_topology_override)
 from ovbench.metrics import Sample, aggregate, percentile, summarize
 from ovbench.presets import baseline_preset, build_presets, parse_ov_config
 from ovbench.runner import RunConfig, run_instance, run_interleaved, run_pool
@@ -163,3 +164,46 @@ def test_cli_interleave_shuffle_cooldown(tmp_path):
             "--presets", "default", "latency_fisicos", "--out", str(tmp_path)]
     assert main(base + ["--interleave", "--cooldown", "0.01"]) == 0
     assert main(base + ["--shuffle", "--cooldown", "0.01"]) == 0
+
+
+def test_override_topologia_hibrida():
+    o = parse_topology_override("8P+4E")
+    assert o == {"p_physical": 8, "p_logical": 16, "e_cores": 4, "logical": 20, "physical": 12, "hybrid": True}
+    assert parse_topology_override("8P+4E,noht")["p_logical"] == 8
+    assert parse_topology_override("6P")["hybrid"] is False
+
+
+def test_override_invalido():
+    with pytest.raises(SystemExit):
+        parse_topology_override("oito")
+
+
+def test_override_gera_presets_hibridos():
+    t = detect_topology("8P+4E")
+    assert t.hybrid and t.source == "informado"
+    p = build_presets(t)
+    assert p["pcore_latency"]["INFERENCE_NUM_THREADS"] == "16"
+    assert p["ecore_throughput"]["INFERENCE_NUM_THREADS"] == "4"
+
+
+def test_aviso_cpu_que_costuma_ser_hibrida(monkeypatch):
+    import ovbench.hardware as h
+    monkeypatch.setattr(h, "_modelo_vendor", lambda: ("12th Gen Intel(R) Core(TM) i7-12700", "GenuineIntel"))
+    monkeypatch.setattr(h, "_hibrida_linux", lambda: None)
+    monkeypatch.setattr(h, "_hibrida_windows", lambda: None)
+    monkeypatch.setattr(h, "_virtualizado", lambda: True)
+    monkeypatch.setattr(h.os, "cpu_count", lambda: 20)
+    monkeypatch.delenv("OVBENCH_CPU_TOPOLOGY", raising=False)
+    t = h.detect_topology()
+    assert not t.hybrid and t.virtualized and t.avisos and "--cpu-topology" in t.avisos[0]
+    com_override = h.detect_topology("8P+4E")
+    assert com_override.hybrid and com_override.avisos == []
+
+
+def test_sem_aviso_em_cpu_antiga(monkeypatch):
+    import ovbench.hardware as h
+    monkeypatch.setattr(h, "_modelo_vendor", lambda: ("11th Gen Intel(R) Core(TM) i7-1165G7", "GenuineIntel"))
+    monkeypatch.setattr(h, "_hibrida_linux", lambda: None)
+    monkeypatch.setattr(h, "_hibrida_windows", lambda: None)
+    monkeypatch.delenv("OVBENCH_CPU_TOPOLOGY", raising=False)
+    assert h.detect_topology().avisos == []

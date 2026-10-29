@@ -81,6 +81,23 @@ Nessa máquina os presets com threads definidas ficam cerca de 9% acima do `defa
 estão dentro do ruído. Os números dependem de máquina, temperatura e modelo; veja a seção sobre medições
 estáveis antes de tirar conclusões de diferenças pequenas.
 
+## Topologia da CPU
+
+O `ovbench` lê a topologia (núcleos P/E, threads) do sistema. **Em WSL2 e máquinas virtuais o sistema esconde
+essa informação**: uma CPU híbrida aparece como não híbrida e a contagem de núcleos sai errada. Quando o modelo
+da CPU sugere que ela é híbrida e isso não foi detectado, o `ovbench` mostra um aviso. Duas saídas:
+
+- Rodar no Windows ou no Linux nativos (a detecção funciona).
+- Informar a topologia à mão com `--cpu-topology` (ou a variável `OVBENCH_CPU_TOPOLOGY`):
+
+```bash
+ovbench info --cpu-topology 8P+4E          # 8 P-cores com HT + 4 E-cores (ex.: Core i7-12700)
+ovbench run  --cpu-topology 8P+4E --model modelos/qwen25-0.5b
+```
+
+Formatos: `8P+4E` (P-cores com Hyper-Threading), `8P+4E,noht` (sem HT) e `6P` (sem E-cores). O relatório
+registra se a topologia foi `detectada` ou `informada`.
+
 ## Presets
 
 Os presets são gerados da topologia detectada. `SCHEDULING_CORE_TYPE` só aparece em CPU híbrida.
@@ -235,6 +252,8 @@ tests/           testes com backend falso (não exigem modelo nem OpenVINO)
 - No modo `--interleave`, todos os presets ficam na memória ao mesmo tempo.
 
 **Detecção de hardware**
+- Em WSL2 e máquinas virtuais a topologia real da CPU fica escondida; use `--cpu-topology` (veja a seção
+  "Topologia da CPU").
 - A detecção de núcleos P/E usa `GetSystemCpuSetInformation` no Windows e `/sys/devices` no Linux. Em macOS a
   CPU é tratada como não híbrida.
 - Em CPU híbrida, a contagem de P-cores físicos no Linux depende do `core_id` do sistema.

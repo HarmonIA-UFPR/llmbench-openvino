@@ -23,8 +23,10 @@ def _bool(v):
 
 
 def cmd_info(args) -> int:
-    t = detect_topology()
-    print(json.dumps(detect_environment(), ensure_ascii=False, indent=2))
+    t = detect_topology(args.cpu_topology)
+    print(json.dumps(detect_environment(args.cpu_topology), ensure_ascii=False, indent=2))
+    for aviso in t.avisos:
+        print(f"\n[aviso] {aviso}")
     if not t.is_intel:
         print("\n[aviso] CPU não identificada como Intel; o OpenVINO funciona, mas os presets foram pensados para Intel.")
     print(f"\nPresets disponíveis para {args.device}:")
@@ -39,7 +41,9 @@ def cmd_convert(args) -> int:
 
 
 def cmd_run(args) -> int:
-    topo = detect_topology()
+    topo = detect_topology(args.cpu_topology)
+    for aviso in topo.avisos:
+        print(f"[aviso] {aviso}")
     spec = make_spec(args.backend, args.model, args.device, _bool(args.enable_thinking), args.trust_remote_code)
     todos = build_presets(topo, args.device)
     for extra in args.ov_config or []:
@@ -105,7 +109,7 @@ def cmd_run(args) -> int:
         "meta": {"modelo": modelo, "backend": spec.name, "dispositivo": args.device, "versao": __version__,
                  "data": datetime.now().isoformat(timespec="seconds"),
                  "parametros": {k: v for k, v in vars(args).items() if k != "func"}},
-        "ambiente": detect_environment(),
+        "ambiente": detect_environment(args.cpu_topology),
         "resultados": resultados,
     }
     print("\n" + markdown(rel))
@@ -122,6 +126,9 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("info", help="mostra hardware detectado e presets gerados")
     p.add_argument("--device", default="CPU")
+    p.add_argument("--cpu-topology", metavar="NP+NE",
+                   help="informa a topologia à mão, ex.: 8P+4E (P-cores com HT), 8P+4E,noht, 6P; "
+                        "também aceita a variável OVBENCH_CPU_TOPOLOGY")
     p.set_defaults(func=cmd_info)
 
     p = sub.add_parser("convert", help="converte/quantiza um modelo do Hugging Face para OpenVINO")
@@ -135,6 +142,9 @@ def main(argv=None) -> int:
     p.add_argument("--model", help="pasta do modelo em formato OpenVINO IR")
     p.add_argument("--backend", default="openvino", choices=["openvino", "fake"])
     p.add_argument("--device", default="CPU", help="CPU (padrão), GPU ou NPU")
+    p.add_argument("--cpu-topology", metavar="NP+NE",
+                   help="informa a topologia à mão, ex.: 8P+4E (P-cores com HT), 8P+4E,noht, 6P; "
+                        "também aceita a variável OVBENCH_CPU_TOPOLOGY")
     p.add_argument("--mode", choices=["instancia", "pool"], default="instancia")
     p.add_argument("--presets", nargs="+", help="presets a testar (padrão: todos; no pool, 1 = baseline)")
     p.add_argument("--ov-config", action="append", metavar="NOME=JSON",
