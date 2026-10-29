@@ -53,7 +53,10 @@ Sem o extra `openvino` só funciona o backend `fake`, usado para testes.
 # 1. Veja o que foi detectado e os presets gerados para esta máquina
 ovbench info
 
-# 2. Converta e quantize um modelo do Hugging Face (ou use um que já esteja em OpenVINO IR)
+# 2a. Baixe um modelo que já está em OpenVINO IR (ex.: os da organização OpenVINO no Hugging Face)
+ovbench download --repo-id OpenVINO/Qwen2.5-1.5B-Instruct-int8-ov
+
+# 2b. ...ou converta e quantize um modelo qualquer do Hugging Face
 ovbench convert --model-id Qwen/Qwen2.5-0.5B-Instruct --out modelos/qwen25-0.5b --weight-format int8
 
 # 3. Rode o benchmark
@@ -223,7 +226,8 @@ src/ovbench/
   runner.py      modos instância, intercalado e pool
   report.py      relatórios JSON, CSV e Markdown
   convert.py     conversão e quantização via optimum-cli
-  cli.py         ovbench info | run | convert
+  download.py    download de modelos já em OpenVINO IR (Hugging Face)
+  cli.py         ovbench info | run | convert | download
 tests/           testes com backend falso (não exigem modelo nem OpenVINO)
 ```
 

@@ -35,6 +35,14 @@ def cmd_info(args) -> int:
     return 0
 
 
+def cmd_download(args) -> int:
+    from ovbench.download import baixar
+    destino = baixar(args.repo_id, args.out, args.revision)
+    print(f"Modelo em: {destino}")
+    print(f"Próximo passo: ovbench run --model {destino}")
+    return 0
+
+
 def cmd_convert(args) -> int:
     from ovbench.convert import converter
     return converter(args.model_id, args.out, args.weight_format, args.trust_remote_code)
@@ -130,6 +138,12 @@ def main(argv=None) -> int:
                    help="informa a topologia à mão, ex.: 8P+4E (P-cores com HT), 8P+4E,noht, 6P; "
                         "também aceita a variável OVBENCH_CPU_TOPOLOGY")
     p.set_defaults(func=cmd_info)
+
+    p = sub.add_parser("download", help="baixa do Hugging Face um modelo já em formato OpenVINO IR")
+    p.add_argument("--repo-id", required=True, help="ex.: OpenVINO/Qwen2.5-1.5B-Instruct-int8-ov")
+    p.add_argument("--out", help="pasta de destino (padrão: modelos/<nome do repositório>)")
+    p.add_argument("--revision")
+    p.set_defaults(func=cmd_download)
 
     p = sub.add_parser("convert", help="converte/quantiza um modelo do Hugging Face para OpenVINO")
     p.add_argument("--model-id", required=True, help="id do Hugging Face ou pasta local")

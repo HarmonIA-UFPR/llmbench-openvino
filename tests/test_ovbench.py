@@ -207,3 +207,17 @@ def test_sem_aviso_em_cpu_antiga(monkeypatch):
     monkeypatch.setattr(h, "_hibrida_windows", lambda: None)
     monkeypatch.delenv("OVBENCH_CPU_TOPOLOGY", raising=False)
     assert h.detect_topology().avisos == []
+
+
+def test_download_chama_snapshot_e_avisa_sem_xml(tmp_path, monkeypatch, capsys):
+    import sys, types
+    chamado = {}
+    fake = types.ModuleType("huggingface_hub")
+    def snapshot_download(repo_id, local_dir, revision=None):
+        chamado.update(repo_id=repo_id, local_dir=local_dir)
+        return local_dir
+    fake.snapshot_download = snapshot_download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake)
+    rc = main(["download", "--repo-id", "OpenVINO/x-int8-ov", "--out", str(tmp_path / "m")])
+    assert rc == 0 and chamado["repo_id"] == "OpenVINO/x-int8-ov"
+    assert "nenhum arquivo .xml" in capsys.readouterr().out
