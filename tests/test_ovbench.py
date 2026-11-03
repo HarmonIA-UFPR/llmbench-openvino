@@ -221,3 +221,26 @@ def test_download_chama_snapshot_e_avisa_sem_xml(tmp_path, monkeypatch, capsys):
     rc = main(["download", "--repo-id", "OpenVINO/x-int8-ov", "--out", str(tmp_path / "m")])
     assert rc == 0 and chamado["repo_id"] == "OpenVINO/x-int8-ov"
     assert "nenhum arquivo .xml" in capsys.readouterr().out
+
+
+def test_run_falha_cedo_sem_pasta_do_modelo(tmp_path, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["run", "--model", str(tmp_path / "nao_existe"), "--out", str(tmp_path)])
+    msg = str(e.value)
+    assert "Pasta do modelo não encontrada" in msg and "ovbench download" in msg
+
+
+def test_run_falha_cedo_pasta_sem_xml(tmp_path):
+    with pytest.raises(SystemExit) as e:
+        main(["run", "--model", str(tmp_path), "--out", str(tmp_path)])
+    assert "Nenhum arquivo .xml" in str(e.value)
+
+
+def test_fixed_length_nao_marca_atingiu_limite():
+    spec = make_spec("fake", None)
+    r = run_instance(spec.factory, "a", {}, load_workload("curto"), RunConfig(1, 0, 8, fixed_length=10),
+                     progress=lambda *_: None)
+    assert r["resumo"]["atingiu_limite"] == 0
+    r2 = run_instance(spec.factory, "a", {}, load_workload("curto"), RunConfig(1, 0, 8),
+                      progress=lambda *_: None)
+    assert r2["resumo"]["atingiu_limite"] == 1.0

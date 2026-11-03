@@ -48,6 +48,21 @@ def cmd_convert(args) -> int:
     return converter(args.model_id, args.out, args.weight_format, args.trust_remote_code)
 
 
+def _exigir_modelo(args) -> None:
+    """Para cedo, com instruções, se a pasta do modelo não existe (evita repetir o erro em cada preset)."""
+    if args.backend != "openvino":
+        return
+    pasta = Path(args.model).expanduser()
+    if not pasta.is_dir():
+        raise SystemExit(
+            f"Pasta do modelo não encontrada: {pasta.resolve()}\n"
+            "Baixe um modelo já em OpenVINO IR:  ovbench download --repo-id OpenVINO/Qwen2.5-1.5B-Instruct-int8-ov\n"
+            "ou converta um do Hugging Face:      ovbench convert --model-id <id> --out <pasta>\n"
+            "(a pasta modelos/ não vai para o git: cada máquina precisa baixar o seu).")
+    if not any(pasta.glob("*.xml")):
+        raise SystemExit(f"Nenhum arquivo .xml em {pasta.resolve()}: a pasta não parece conter um modelo OpenVINO IR.")
+
+
 def cmd_run(args) -> int:
     topo = detect_topology(args.cpu_topology)
     for aviso in topo.avisos:
@@ -65,6 +80,7 @@ def cmd_run(args) -> int:
             print(f"{n}: {c}")
         return 0
 
+    _exigir_modelo(args)
     prompts = load_workload(args.workload)
     if args.input_lengths:
         prompts += build_length_ladder(spec.counter(), args.input_lengths)

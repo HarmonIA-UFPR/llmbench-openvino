@@ -33,7 +33,8 @@ def _gerar(backend, prompt: Prompt, rep: int, cfg: RunConfig, validator, saida: 
     r = backend.generate(prompt.messages, **cfg.gen_kwargs())
     valido = validator(r.text) if validator else None
     s = Sample(prompt.id, rep, r.n_input_tokens, r.n_output_tokens, r.total_s, r.ttft_s,
-               wait_s=wait_s, valid=valido, hit_limit=r.hit_limit)
+               wait_s=wait_s, valid=valido,
+               hit_limit=r.hit_limit and not cfg.fixed_length)  # com --fixed-length bater no limite é o esperado
     if saida is not None:
         saida.write(json.dumps({"config": rotulo, "prompt_id": prompt.id, "repeticao": rep,
                                 "resposta": r.text, **s.to_dict()}, ensure_ascii=False) + "\n")

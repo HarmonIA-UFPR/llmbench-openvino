@@ -179,6 +179,7 @@ e não a velocidade. Para comparar modelos:
 |---|---|---|
 | `--model` | | Pasta do modelo em OpenVINO IR |
 | `--device` | `CPU` | `CPU`, `GPU`, `GPU.0`, `NPU` |
+| `--cpu-topology` | detectada | Informa a topologia à mão, ex.: `8P+4E` (veja "Topologia da CPU") |
 | `--mode` | `instancia` | `instancia` ou `pool` |
 | `--presets` | todos | Presets a testar (no pool, um preset é o baseline) |
 | `--ov-config` | | `NOME=JSON` ou arquivo `.json`; repetível |
@@ -263,6 +264,18 @@ tests/           testes com backend falso (não exigem modelo nem OpenVINO)
 - Em CPU híbrida, a contagem de P-cores físicos no Linux depende do `core_id` do sistema.
 - As instruções (AVX2, AVX-512, VNNI, AMX) vêm do `py-cpuinfo`; se ele falhar no Windows, só `avx2` e `avx512f`
   são detectadas.
+
+**Testado**
+- Core i7-1165G7 (4 núcleos / 8 threads, não híbrido), Windows 11, Python 3.12, OpenVINO 2026.4,
+  optimum-intel 2.2 e transformers 5.5, com Qwen2.5-0.5B em INT8.
+- Core i7-12700 (8P + 4E, 20 threads, DDR não informada), **WSL2** (Ubuntu), Python 3.13, mesmas versões, com
+  `OpenVINO/Qwen2.5-1.5B-Instruct-int8-ov` e `--cpu-topology 8P+4E`: a decodificação ficou em 25,8 a 26,7 tok/s
+  nos quatro presets testados (diferença abaixo de 4%, dentro do ruído), compatível com um limite de banda de
+  memória. O TTFT foi de ~130 ms em `pcore_sem_ht` contra ~180 ms nos demais.
+- A detecção automática de CPU híbrida **não foi verificada em hardware real**: no WSL2 a topologia fica
+  escondida e foi informada à mão. Os presets de GPU e NPU só foram cobertos por testes automatizados.
+- Em WSL2/VM, o OpenVINO aceita `SCHEDULING_CORE_TYPE=PCORE_ONLY`, mas não há como confirmar que as threads
+  foram de fato fixadas nos P-cores. Para conclusões sobre pinagem, meça em Windows ou Linux nativos.
 
 
 ## Testes
