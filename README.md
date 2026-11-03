@@ -280,20 +280,24 @@ tests/           testes com backend falso (não exigem modelo nem OpenVINO)
   feita aí.
 - Os presets de GPU e NPU só foram cobertos por testes automatizados.
 
-**Exemplo em CPU híbrida** (i7-12700, Windows 11 nativo, Qwen2.5-1.5B INT8, 6 repetições, 128 tokens):
+**Exemplo em CPU híbrida** (i7-12700, Windows 11 nativo, Qwen2.5-1.5B INT8, 128 tokens gerados, `--interleave`
+com ordem balanceada, 8 repetições × 4 prompts = 32 amostras por preset):
 
-| Preset | Decode (tok/s) | Lat. média (ms) | TTFT (ms) |
-|---|---|---|---|
-| pcore_kv_cache_u8 | 24,5 | 5341 | 146 |
-| pcore_latency | 23,0 | 5731 | 159 |
-| pcore_sem_ht | 22,6 | 5947 | 168 |
-| todos_os_nucleos | 22,3 | 6103 | 311 |
-| default | 19,7 | 6677 | 215 |
-| sem_pinagem | 18,7 | 7108 | 298 |
+| Preset | Decode (tok/s) | Lat. média (ms) | p95 (ms) | TTFT (ms) |
+|---|---|---|---|---|
+| pcore_kv_cache_u8 | 25,0 | 5233 | 5511 | 134 |
+| pcore_latency | 24,1 | 5423 | 5697 | 139 |
+| pcore_sem_ht | 23,9 | 5451 | 5712 | 139 |
+| default | 20,9 | 6344 | 7041 | 200 |
 
-Nessa rodada a ordem dos presets em cada rodada era aleatória e o `pcore_kv_cache_u8` caiu sempre nas
-posições finais; por isso o desenho passou a ser balanceado por padrão. Trate a vantagem dele sobre o
-`pcore_latency` como indicação, não como conclusão.
+- Os presets com `PCORE_ONLY` ficaram 15 a 20% mais rápidos na decodificação, ~30% melhores no TTFT e bem mais
+  estáveis que o `default`, que deixa o sistema escolher os núcleos.
+- `pcore_latency` (16 threads) e `pcore_sem_ht` (8 threads) empataram: nesta carga o Hyper-Threading não fez diferença.
+- `pcore_kv_cache_u8` ficou ~4% acima de `pcore_latency`, com a mesma ordenação de uma rodada anterior (6 presets,
+  ordem aleatória). Esse preset reduz a precisão do KV cache, e o `ovbench` não mede qualidade: compare as respostas
+  (`--save-responses`) antes de adotá-lo.
+- Prompts curtos (~50 tokens) e uma só instância; prompts longos, `ecore_*`, `pcore_throughput` e o modo pool não
+  foram medidos nesta máquina.
 
 ## Testes
 
