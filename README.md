@@ -138,7 +138,7 @@ isso e a comparação sai enviesada. Para evitar:
 
 | Opção | Efeito |
 |---|---|
-| `--interleave` | Intercala as repetições entre os presets e embaralha a ordem a cada rodada. Todos os presets ficam carregados ao mesmo tempo, então a RAM é a soma dos modelos. |
+| `--interleave` | Intercala as repetições entre os presets, com a ordem de cada rodada em desenho balanceado (cada preset passa por cada posição o mesmo número de vezes; use um nº de repetições múltiplo do nº de presets). Todos os presets ficam carregados ao mesmo tempo, então a RAM é a soma dos modelos. |
 | `--shuffle` | Embaralha a ordem dos presets no modo sequencial. |
 | `--cooldown S` | Pausa de S segundos entre blocos, para a CPU esfriar. |
 | `--seed N` | Torna a ordem reproduzível (padrão 42). |
@@ -193,7 +193,7 @@ e não a velocidade. Para comparar modelos:
 | `--validator` | `none` | Ver a seção de validadores |
 | `--enable-thinking` | | `true` ou `false`, para modelos Qwen3 |
 | `--trust-remote-code` | | Para modelos que exigem código remoto |
-| `--interleave`, `--shuffle`, `--cooldown`, `--seed` | | Ver a seção de medições estáveis |
+| `--interleave`, `--ordem`, `--shuffle`, `--cooldown`, `--seed` | | Ver a seção de medições estáveis |
 | `--pool-instancias`, `--pool-concorrencia` | 2, nº de instâncias | Modo pool |
 | `--save-responses` | | Grava as respostas completas em `.jsonl` |
 | `--out` | `resultados` | Pasta de saída |
@@ -262,21 +262,38 @@ tests/           testes com backend falso (não exigem modelo nem OpenVINO)
 - A detecção de núcleos P/E usa `GetSystemCpuSetInformation` no Windows e `/sys/devices` no Linux. Em macOS a
   CPU é tratada como não híbrida.
 - Em CPU híbrida, a contagem de P-cores físicos no Linux depende do `core_id` do sistema.
-- As instruções (AVX2, AVX-512, VNNI, AMX) vêm do `py-cpuinfo`; se ele falhar no Windows, só `avx2` e `avx512f`
-  são detectadas.
+- As instruções (AVX2, AVX-512, VNNI, AMX) vêm do `/proc/cpuinfo` no Linux e do `py-cpuinfo` no Windows. Se o
+  `py-cpuinfo` falhar, só `avx2` e `avx512f` são detectadas. No Windows, o `avx_vnni` não aparece mesmo com o
+  `py-cpuinfo` instalado (visto numa i7-12700, onde o Linux/WSL o reporta), então uma lista incompleta de
+  instruções no Windows não significa que a CPU não tenha o recurso. O campo `isa` é só informativo: não
+  influencia presets nem medições.
 
 **Testado**
 - Core i7-1165G7 (4 núcleos / 8 threads, não híbrido), Windows 11, Python 3.12, OpenVINO 2026.4,
   optimum-intel 2.2 e transformers 5.5, com Qwen2.5-0.5B em INT8.
-- Core i7-12700 (8P + 4E, 20 threads, DDR não informada), **WSL2** (Ubuntu), Python 3.13, mesmas versões, com
-  `OpenVINO/Qwen2.5-1.5B-Instruct-int8-ov` e `--cpu-topology 8P+4E`: a decodificação ficou em 25,8 a 26,7 tok/s
-  nos quatro presets testados (diferença abaixo de 4%, dentro do ruído), compatível com um limite de banda de
-  memória. O TTFT foi de ~130 ms em `pcore_sem_ht` contra ~180 ms nos demais.
-- A detecção automática de CPU híbrida **não foi verificada em hardware real**: no WSL2 a topologia fica
-  escondida e foi informada à mão. Os presets de GPU e NPU só foram cobertos por testes automatizados.
-- Em WSL2/VM, o OpenVINO aceita `SCHEDULING_CORE_TYPE=PCORE_ONLY`, mas não há como confirmar que as threads
-  foram de fato fixadas nos P-cores. Para conclusões sobre pinagem, meça em Windows ou Linux nativos.
+- Core i7-12700 (8P + 4E, 20 threads), Windows 11 **nativo**, Python 3.13, mesmas versões, com
+  `OpenVINO/Qwen2.5-1.5B-Instruct-int8-ov`: a topologia 8P+4E foi detectada automaticamente (sem avisos) e
+  os presets de P-core/E-core foram gerados. Nessa máquina a escolha de núcleos pesou (veja abaixo).
+- Mesma CPU em **WSL2**, com `--cpu-topology 8P+4E`: todos os presets ficaram praticamente iguais
+  (~26 tok/s, diferença menor que 4%). No Windows nativo, os mesmos presets se separaram em até 24%. Ou seja,
+  em WSL2/VM a pinagem de núcleos não tem o efeito esperado: não tire conclusões sobre núcleos de uma medição
+  feita aí.
+- Os presets de GPU e NPU só foram cobertos por testes automatizados.
 
+**Exemplo em CPU híbrida** (i7-12700, Windows 11 nativo, Qwen2.5-1.5B INT8, 6 repetições, 128 tokens):
+
+| Preset | Decode (tok/s) | Lat. média (ms) | TTFT (ms) |
+|---|---|---|---|
+| pcore_kv_cache_u8 | 24,5 | 5341 | 146 |
+| pcore_latency | 23,0 | 5731 | 159 |
+| pcore_sem_ht | 22,6 | 5947 | 168 |
+| todos_os_nucleos | 22,3 | 6103 | 311 |
+| default | 19,7 | 6677 | 215 |
+| sem_pinagem | 18,7 | 7108 | 298 |
+
+Nessa rodada a ordem dos presets em cada rodada era aleatória e o `pcore_kv_cache_u8` caiu sempre nas
+posições finais; por isso o desenho passou a ser balanceado por padrão. Trate a vantagem dele sobre o
+`pcore_latency` como indicação, não como conclusão.
 
 ## Testes
 

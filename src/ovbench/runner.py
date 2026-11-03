@@ -77,15 +77,41 @@ def run_instance(factory: Factory, nome: str, ov_config: dict, prompts: list[Pro
     return resultado
 
 
+def ordem_balanceada(n: int, rodada: int) -> list[int]:
+    """Ordem dos n presets na `rodada`, em desenho Williams (quadrado latino balanceado).
+
+    Com n par e `rodada` percorrendo n rodadas, cada preset ocupa cada posição exatamente uma vez e
+    cada par ordenado "A logo depois de B" aparece exatamente uma vez -- neutraliza o efeito da posição
+    no bloco e do preset anterior. Com n ímpar só a posição fica balanceada (rotação simples).
+    """
+    if n % 2 == 0:
+        seq, a, b = [0], 1, n - 1
+        while len(seq) < n:
+            seq.append(a)
+            a += 1
+            if len(seq) < n:
+                seq.append(b)
+                b -= 1
+    else:
+        seq = list(range(n))
+    return [(x + rodada) % n for x in seq]
+
+
 def run_interleaved(factory: Factory, presets: dict[str, dict], prompts: list[Prompt], cfg: RunConfig,
                     validator=None, saida: IO | None = None, cooldown: float = 0.0, seed: int = 42,
-                    progress=print) -> list[dict]:
-    """Intercala as repetições entre presets (A B C, C A B, ...), com ordem embaralhada a cada rodada.
+                    ordem_modo: str = "balanceada", progress=print) -> list[dict]:
+    """Intercala as repetições entre presets (A B C, B C A, ...).
+
+    `ordem_modo='balanceada'` (padrão): rotaciona uma ordem-base (embaralhada pela semente) em desenho Williams,
+    de modo que nenhum preset fique sempre cedo ou sempre tarde. Para o balanço completo use um nº de
+    repetições múltiplo do nº de presets. `'aleatoria'`: embaralha a cada rodada (pode viciar posições).
 
     Throttling térmico e outras derivas lentas passam a afetar todos os presets por igual, em vez de
     penalizar quem roda por último. Custo: todas as instâncias ficam carregadas ao mesmo tempo
     (RAM ~ soma dos modelos) e `pico_rss_mb` é o pico do conjunto, igual para todos.
     """
+    if ordem_modo not in ("balanceada", "aleatoria"):
+        raise ValueError(f"ordem_modo inválido: {ordem_modo!r}")
     rng = random.Random(seed)
     resultados = {n: {"modo": "instancia", "config": n, "ov_config": c, "status": "ok", "intercalado": True}
                   for n, c in presets.items()}
@@ -106,9 +132,17 @@ def run_interleaved(factory: Factory, presets: dict[str, dict], prompts: list[Pr
                     resultados[n].update(status="erro", erro=f"{type(e).__name__}: {e}")
                     progress(f"  [erro] {n}: {resultados[n]['erro']}")
             ativos = list(backends)
+            base = ativos[:]
+            rng.shuffle(base)
+            if ordem_modo == "balanceada" and ativos and cfg.repetitions % len(ativos):
+                progress(f"  [aviso] {cfg.repetitions} repetições não é múltiplo de {len(ativos)} presets: "
+                         "as posições ficam só aproximadamente balanceadas.")
             for rep in range(cfg.repetitions):
-                rodada = ativos[:]
-                rng.shuffle(rodada)
+                if ordem_modo == "balanceada":
+                    rodada = [base[i] for i in ordem_balanceada(len(base), rep)]
+                else:
+                    rodada = ativos[:]
+                    rng.shuffle(rodada)
                 ordem.append(rodada)
                 progress(f"  rodada {rep + 1}/{cfg.repetitions}: {' > '.join(rodada)}")
                 for i, n in enumerate(rodada):

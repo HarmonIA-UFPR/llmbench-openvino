@@ -104,7 +104,7 @@ def cmd_run(args) -> int:
         if args.mode == "instancia" and args.interleave:
             print(f"\n--- intercalado: {', '.join(nomes)} (todos carregados ao mesmo tempo; semente {args.seed})")
             resultados += run_interleaved(spec.factory, {n: todos[n] for n in nomes}, prompts, cfg,
-                                          validator, saida, args.cooldown, args.seed)
+                                          validator, saida, args.cooldown, args.seed, args.ordem)
         elif args.mode == "instancia":
             if args.shuffle:
                 nomes = random.Random(args.seed).sample(nomes, len(nomes))
@@ -192,6 +192,9 @@ def main(argv=None) -> int:
     p.add_argument("--interleave", action="store_true",
                    help="intercala as repetições entre os presets (neutraliza deriva térmica); "
                         "mantém todos carregados ao mesmo tempo")
+    p.add_argument("--ordem", choices=["balanceada", "aleatoria"], default="balanceada",
+                   help="ordem dos presets em cada rodada do --interleave: balanceada (padrão; cada preset em cada "
+                        "posição o mesmo nº de vezes) ou aleatoria")
     p.add_argument("--shuffle", action="store_true", help="embaralha a ordem dos presets (modo sequencial)")
     p.add_argument("--cooldown", type=float, default=0.0, help="pausa em segundos entre blocos, para esfriar a CPU")
     p.add_argument("--seed", type=int, default=42, help="semente da ordem embaralhada")

@@ -8,7 +8,7 @@ from ovbench.hardware import (CpuTopology, _filtrar_isa, _ler_faixa, detect_isa,
                               parse_topology_override)
 from ovbench.metrics import Sample, aggregate, percentile, summarize
 from ovbench.presets import baseline_preset, build_presets, parse_ov_config
-from ovbench.runner import RunConfig, run_instance, run_interleaved, run_pool
+from ovbench.runner import RunConfig, ordem_balanceada, run_instance, run_interleaved, run_pool
 from ovbench.validators import get_validator
 from ovbench.workloads import build_length_ladder, load_workload
 
@@ -244,3 +244,36 @@ def test_fixed_length_nao_marca_atingiu_limite():
     r2 = run_instance(spec.factory, "a", {}, load_workload("curto"), RunConfig(1, 0, 8),
                       progress=lambda *_: None)
     assert r2["resumo"]["atingiu_limite"] == 1.0
+
+
+@pytest.mark.parametrize("n", [2, 4, 6, 8])
+def test_ordem_balanceada_williams(n):
+    rodadas = [ordem_balanceada(n, r) for r in range(n)]
+    assert all(sorted(o) == list(range(n)) for o in rodadas)
+    for pos in range(n):  # cada preset em cada posição exatamente uma vez
+        assert sorted(o[pos] for o in rodadas) == list(range(n))
+    pares = [(o[i], o[i + 1]) for o in rodadas for i in range(n - 1)]
+    assert len(pares) == len(set(pares)) == n * (n - 1)  # cada "A depois de B" exatamente uma vez
+
+
+def test_ordem_balanceada_impar_balanceia_posicao():
+    rodadas = [ordem_balanceada(5, r) for r in range(5)]
+    for pos in range(5):
+        assert sorted(o[pos] for o in rodadas) == list(range(5))
+
+
+def test_intercalado_balanceado_posicoes_iguais():
+    spec = make_spec("fake", None)
+    nomes = ["a", "b", "c", "d"]
+    rs = run_interleaved(spec.factory, {n: {} for n in nomes}, load_workload("curto"), RunConfig(4, 0, 4),
+                         seed=3, progress=lambda *_: None)
+    ordens = rs[0]["ordem_por_rodada"]
+    for n in nomes:
+        assert sorted(o.index(n) for o in ordens) == [0, 1, 2, 3]
+
+
+def test_intercalado_ordem_aleatoria_ainda_funciona():
+    spec = make_spec("fake", None)
+    rs = run_interleaved(spec.factory, {"a": {}, "b": {}, "c": {}}, load_workload("curto"), RunConfig(3, 0, 4),
+                         ordem_modo="aleatoria", progress=lambda *_: None)
+    assert all(r["status"] == "ok" for r in rs)
